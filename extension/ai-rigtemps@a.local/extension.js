@@ -49,11 +49,11 @@ function barSegments(data) {
     let cpu = [];
     let gpu = [];
 
-    // CPU group: temp, busy %, VRM, system RAM
-    if (pick.CPU !== undefined)
-        cpu.push({ text: 'CPU ' + pick.CPU.toFixed(0) + '\u00b0', color: tempColor(pick.CPU) });
+    // CPU group: busy %, temp, VRM, system RAM
     if (typeof data.cpu_percent === 'number')
-        cpu.push({ text: data.cpu_percent.toFixed(0) + '%', color: pctColor(data.cpu_percent) });
+        cpu.push({ text: 'CPU ' + data.cpu_percent.toFixed(0) + '%', color: pctColor(data.cpu_percent) });
+    if (pick.CPU !== undefined)
+        cpu.push({ text: pick.CPU.toFixed(0) + '\u00b0', color: tempColor(pick.CPU) });
     if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
         let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
         cpu.push({ text: 'VRM ' + vrm.toFixed(0) + '\u00b0', color: tempColor(vrm) });
@@ -64,11 +64,11 @@ function barSegments(data) {
         cpu.push({ text: 'RAM ' + ram, color: pctColor(p) });
     }
 
-    // GPU group: temp, busy %, VRAM
-    if (pick.GPU !== undefined)
-        gpu.push({ text: 'GPU ' + pick.GPU.toFixed(0) + '\u00b0', color: tempColor(pick.GPU) });
+    // GPU group: busy %, temp, VRAM
     if (typeof data.gpu_percent === 'number')
-        gpu.push({ text: data.gpu_percent.toFixed(0) + '%', color: pctColor(data.gpu_percent) });
+        gpu.push({ text: 'GPU ' + data.gpu_percent.toFixed(0) + '%', color: pctColor(data.gpu_percent) });
+    if (pick.GPU !== undefined)
+        gpu.push({ text: pick.GPU.toFixed(0) + '\u00b0', color: tempColor(pick.GPU) });
     let vram = usedTotalGib(data.vram_used_gib, data.vram_total_gib);
     if (vram) {
         let p = data.vram_total_gib ? 100 * data.vram_used_gib / data.vram_total_gib : 0;
