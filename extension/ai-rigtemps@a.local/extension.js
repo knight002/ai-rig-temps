@@ -43,43 +43,49 @@ function compactMarkup(data) {
             if (!isNaN(v)) pick[t.label] = v;
         }
     }
-    let parts = [];
-    // CPU temp + utilization together
+    let cpu = [];
+    let gpu = [];
+
+    // CPU group: temp, busy %, VRM, system RAM
     if (pick.CPU !== undefined) {
         let s = '<span foreground="' + tempColor(pick.CPU) + '">' +
                 'CPU ' + pick.CPU.toFixed(0) + '\u00b0</span>';
         if (typeof data.cpu_percent === 'number')
             s += ' <span foreground="' + pctColor(data.cpu_percent) + '">' +
                  data.cpu_percent.toFixed(0) + '%</span>';
-        parts.push(s);
+        cpu.push(s);
     }
-    // GPU temp + utilization (busy %) together
+    if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
+        let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
+        cpu.push('<span foreground="' + tempColor(vrm) + '">VRM ' +
+                 vrm.toFixed(0) + '\u00b0</span>');
+    }
+    let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
+    if (ram) {
+        let p = data.ram_total_gib ? 100 * data.ram_used_gib / data.ram_total_gib : 0;
+        cpu.push('<span foreground="' + pctColor(p) + '">RAM ' + ram + '</span>');
+    }
+
+    // GPU group: temp, busy %, VRAM
     if (pick.GPU !== undefined) {
         let s = '<span foreground="' + tempColor(pick.GPU) + '">GPU ' +
                 pick.GPU.toFixed(0) + '\u00b0</span>';
         if (typeof data.gpu_percent === 'number')
             s += ' <span foreground="' + pctColor(data.gpu_percent) + '">' +
                  data.gpu_percent.toFixed(0) + '%</span>';
-        parts.push(s);
-    }
-    if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
-        let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
-        parts.push('<span foreground="' + tempColor(vrm) + '">VRM ' +
-                   vrm.toFixed(0) + '\u00b0</span>');
-    }
-    // system + GPU memory
-    let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
-    if (ram) {
-        let p = data.ram_total_gib ? 100 * data.ram_used_gib / data.ram_total_gib : 0;
-        parts.push('<span foreground="' + pctColor(p) + '">RAM ' + ram + '</span>');
+        gpu.push(s);
     }
     let vram = usedTotalGib(data.vram_used_gib, data.vram_total_gib);
     if (vram) {
         let p = data.vram_total_gib ? 100 * data.vram_used_gib / data.vram_total_gib : 0;
-        parts.push('<span foreground="' + pctColor(p) + '">VRAM ' + vram + '</span>');
+        gpu.push('<span foreground="' + pctColor(p) + '">VRAM ' + vram + '</span>');
     }
-    if (!parts.length) parts.push('<span foreground="#888">ai-rig</span>');
-    return parts.join('  ');
+
+    let groups = [];
+    if (cpu.length) groups.push(cpu.join(' '));
+    if (gpu.length) groups.push(gpu.join(' '));
+    if (!groups.length) return '<span foreground="#888">ai-rig</span>';
+    return groups.join('  <span foreground="#666">|</span>  ');
 }
 
 // read the cache file the background poller writes; returns data or null
