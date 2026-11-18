@@ -3,6 +3,13 @@
 Live temperature + fan-speed widget on this laptop, showing the
 **ai-rig (192.168.0.74)**.
 
+## Screenshot
+
+The compact read-out sits in the GNOME top bar, leftmost in the right box
+(CPU group `|` GPU group); clicking it opens the full menu.
+
+![ai-rig temps widget](screenshot1.png)
+
 ## Architecture
 
 ```
@@ -81,11 +88,15 @@ ssh ai-rig 'nvidia-smi --query-gpu=temperature.gpu,fan.speed --format=csv,nohead
 
 ## Colors / layout
 
-- Bar (compact): `CPU …°  GPU …°  VRM …°` → leftmost in the right box,
-  before the system icons/clock.
-- Menu (full): every temp (`CPU`, `VRM_E`, `VRM_W`, `NVMe`, `GPU`) and
-  every fan (`USB4`, `M.2`, `GPU`).
-- Temp: `<65` green, `65–79` orange, `≥80` red. Fans: blue. GPU fan as `%`.
+- Bar (compact), percent before temp, CPU group `|` GPU group:
+  `CPU 26% 52°  VRM 41°  RAM 14/251G   |   GPU 91% 80°  VRAM 46/96G`
+  — leftmost in the right box, before the system icons/clock.
+- Menu (full): usage block (`CPU %`, `GPU %`, `RAM`, `VRAM`), then every
+  temp (`CPU`, `VRM_E`, `VRM_W`, `NVMe`, `GPU`), then every fan
+  (`USB4`, `M.2`, `GPU fan`).
+- Temp: `<65` green, `65–79` orange, `≥80` red. Utilization (CPU/GPU %,
+  RAM, VRAM): `<65%` green, `65–85%` orange, `≥85%` red. Fans: blue.
+- GPU **%** is compute busy (utilization.gpu); `GPU fan` is fan speed.
 - ai-rig unreachable → red **OFFLINE** in the bar, empty menu.
 
 ## Firewall
