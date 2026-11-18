@@ -216,11 +216,16 @@ export default class AIRigTemps extends Extension {
     _setBar(segs) {
         if (!this._barBox) return;
         try {
-            this._barBox.destroy_all_children();
+            if (this._barBox.destroy_all_children)
+                this._barBox.destroy_all_children();
+            let add = (c) => {
+                if (this._barBox.add) this._barBox.add(c);
+                else this._barBox.add_child(c);
+            };
             for (let seg of segs) {
                 let lbl = new St.Label({ text: seg.text });
                 lbl.style = 'color: ' + seg.color + ';';
-                this._barBox.add(lbl);
+                add(lbl);
             }
         } catch (e) {
             log('ai-rigtemps _setBar failed: ' + e.message);
