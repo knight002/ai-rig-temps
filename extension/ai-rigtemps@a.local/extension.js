@@ -21,6 +21,20 @@ function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// color by utilization percent (0..100)
+function pctColor(p) {
+    if (p >= 85) return '#e74c3c';
+    if (p >= 65) return '#f39c12';
+    return '#7ec699';
+}
+
+function usedTotalGib(used, total) {
+    if (used == null || total == null) return null;
+    let u = used.toFixed(1);
+    let t = Math.round(total).toString();
+    return u + '/' + t + 'G';
+}
+
 function compactMarkup(data) {
     let pick = {};
     if (data.temps) {
@@ -30,17 +44,36 @@ function compactMarkup(data) {
         }
     }
     let parts = [];
-    for (let k of ['CPU', 'GPU'])
-        if (pick[k] !== undefined)
-            parts.push('<span foreground="' + tempColor(pick[k]) + '">' +
-                       esc(k) + ' ' + pick[k].toFixed(0) + '\u00b0</span>');
+    // CPU temp + utilization together
+    if (pick.CPU !== undefined) {
+        let s = '<span foreground="' + tempColor(pick.CPU) + '">' +
+                'CPU ' + pick.CPU.toFixed(0) + '\u00b0</span>';
+        if (typeof data.cpu_percent === 'number')
+            s += ' <span foreground="' + pctColor(data.cpu_percent) + '">' +
+                 data.cpu_percent.toFixed(0) + '%</span>';
+        parts.push(s);
+    }
+    if (pick.GPU !== undefined)
+        parts.push('<span foreground="' + tempColor(pick.GPU) + '">GPU ' +
+                   pick.GPU.toFixed(0) + '\u00b0</span>');
     if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
         let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
         parts.push('<span foreground="' + tempColor(vrm) + '">VRM ' +
                    vrm.toFixed(0) + '\u00b0</span>');
     }
+    // system + GPU memory
+    let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
+    if (ram) {
+        let p = data.ram_total_gib ? 100 * data.ram_used_gib / data.ram_total_gib : 0;
+        parts.push('<span foreground="' + pctColor(p) + '">RAM ' + ram + '</span>');
+    }
+    let vram = usedTotalGib(data.vram_used_gib, data.vram_total_gib);
+    if (vram) {
+        let p = data.vram_total_gib ? 100 * data.vram_used_gib / data.vram_total_gib : 0;
+        parts.push('<span foreground="' + pctColor(p) + '">VRAM ' + vram + '</span>');
+    }
     if (!parts.length) parts.push('<span foreground="#888">ai-rig</span>');
-    return parts.join(' ');
+    return parts.join('  ');
 }
 
 // read the cache file the background poller writes; returns data or null
@@ -71,6 +104,25 @@ function rebuildMenu(menu, data) {
         item.label.clutter_text.set_markup(markup);
         item.sensitive = false;
         menu.addMenuItem(item);
+    }
+    // usage block first
+    let usage = [];
+    if (typeof data.cpu_percent === 'number')
+        usage.push('<span foreground="' + pctColor(data.cpu_percent) + '">' +
+                   'CPU      ' + data.cpu_percent.toFixed(1) + '%</span>');
+    let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
+    if (ram)
+        usage.push('<span foreground="' +
+                   (data.ram_total_gib ? pctColor(100 * data.ram_used_gib / data.ram_total_gib) : '#5dade2') +
+                   '">RAM      ' + ram + '</span>');
+    let vram = usedTotalGib(data.vram_used_gib, data.vram_total_gib);
+    if (vram)
+        usage.push('<span foreground="' +
+                   (data.vram_total_gib ? pctColor(100 * data.vram_used_gib / data.vram_total_gib) : '#5dade2') +
+                   '">VRAM     ' + vram + '</span>');
+    if (usage.length) {
+        for (let u of usage) row(u);
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     }
     if (data.temps) {
         for (let t of data.temps) {
