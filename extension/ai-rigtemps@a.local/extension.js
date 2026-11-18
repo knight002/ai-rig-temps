@@ -7,10 +7,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js'
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js'
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js'
 
-const HOST = '192.168.0.74';
-const PORT = 8788;
 const INTERVAL_MS = 2000;
-
+// data older than this (ms) => OFFLINE
+const STALE_MS = 6000;
+const DATA_PATH = `${GLib.get_user_cache_dir()}/ai-rigtemps/data.json`;
 function tempColor(val) {
     if (val >= 80) return '#e74c3c';
     if (val >= 65) return '#f39c12';
@@ -43,25 +43,31 @@ function compactMarkup(data) {
     return parts.join(' ');
 }
 
-function fetchTemps() {
+// read the cache file the background poller writes; returns data or null
+function readData() {
     try {
-        let cmd = 'curl -s --max-time 3 http://' + HOST + ':' + PORT + '/temps';
-        let result = GLib.spawn_command_line_sync(cmd);
-        if (result[0] && result[3] === 0) {
-            let text = new TextDecoder().decode(new Uint8Array(result[1]));
-            return JSON.parse(text);
-        }
+        let [ok, contents] = GLib.file_get_contents(DATA_PATH);
+        if (!ok || !contents) return null;
+        return JSON.parse(contents);
     } catch (e) {
         return null;
     }
-    return null;
+}
+
+// epoch seconds -> ms, using the JS clock (matches the poller's time.time())
+function nowEpochMs() {
+    return Date.now();
 }
 
 function rebuildMenu(menu, data) {
-    menu.removeAll();
+    try {
+        menu.removeAll();
+    } catch (e) {
+        return;
+    }
     function row(markup) {
         let item = new PopupMenu.PopupMenuItem('');
-        item.label.x_align = Clutter.ActorAlign.START;
+        try { item.label.x_align = Clutter.ActorAlign.START; } catch (e) {}
         item.label.clutter_text.set_markup(markup);
         item.sensitive = false;
         menu.addMenuItem(item);
@@ -90,6 +96,7 @@ export default class AIRigTemps extends Extension {
         this._indicator = null;
         this._barLabel = null;
         this._timerId = null;
+        this._lastGoodTs = 0;
     }
 
     enable() {
@@ -116,12 +123,12 @@ export default class AIRigTemps extends Extension {
         });
         this._indicator.add_child(this._barLabel);
 
-        // insert as the first (leftmost) item in the right box
-        // => "widget | system icons"
+        // first (leftmost) item in the right box => "widget | system icons"
         rightBox.insert_child_at_index(this._indicator.container, 0);
 
         this._tick();
-        this._timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, INTERVAL_MS, () => { this._tick(); return true; });
+        this._timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, INTERVAL_MS,
+            () => { this._tick(); return true; });
     }
 
     _uninstall() {
@@ -140,28 +147,23 @@ export default class AIRigTemps extends Extension {
     _setBarText(markup) {
         if (!this._barLabel) return;
         try {
-            if (this._barLabel.clutter_text)
-                this._barLabel.clutter_text.set_markup(markup);
-            else if (this._barLabel.get_clutter_text)
-                this._barLabel.get_clutter_text().set_markup(markup);
-            else
-                this._barLabel.set_text(markup.replace(/<[^>]*>/g, ''));
+            this._barLabel.clutter_text.set_markup(markup);
         } catch (e) {
             log('ai-rigtemps _setBarText failed: ' + e.message);
         }
     }
 
     _tick() {
-        let data = null;
-        try {
-            data = fetchTemps();
-        } catch (e) {
-            log('ai-rigtemps fetchTemps error: ' + e.message);
-        }
-        if (!data) {
+        let data = readData();
+        let now = nowEpochMs();
+        let fresh = data && (now - (data.ts * 1000)) < STALE_MS;
+
+        if (!fresh) {
             this._setBarText('<span foreground="#e74c3c"><b>ai-rig OFFLINE</b></span>');
             return;
         }
+
+        this._lastGoodTs = now;
         this._setBarText(compactMarkup(data));
         try {
             if (this._indicator && this._indicator.menu)
