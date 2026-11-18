@@ -35,7 +35,10 @@ function usedTotalGib(used, total) {
     return u + '/' + t + 'G';
 }
 
-function compactMarkup(data) {
+// Build the bar as a list of {text,color} segments (CPU group | GPU group).
+// Colors are applied via per-label CSS `style`, which is the reliable way to
+// color text on GNOME Shell (Pango span markup on St.Label is unreliable).
+function barSegments(data) {
     let pick = {};
     if (data.temps) {
         for (let t of data.temps) {
@@ -47,45 +50,42 @@ function compactMarkup(data) {
     let gpu = [];
 
     // CPU group: temp, busy %, VRM, system RAM
-    if (pick.CPU !== undefined) {
-        let s = '<span foreground="' + tempColor(pick.CPU) + '">' +
-                'CPU ' + pick.CPU.toFixed(0) + '\u00b0</span>';
-        if (typeof data.cpu_percent === 'number')
-            s += ' <span foreground="' + pctColor(data.cpu_percent) + '">' +
-                 data.cpu_percent.toFixed(0) + '%</span>';
-        cpu.push(s);
-    }
+    if (pick.CPU !== undefined)
+        cpu.push({ text: 'CPU ' + pick.CPU.toFixed(0) + '\u00b0', color: tempColor(pick.CPU) });
+    if (typeof data.cpu_percent === 'number')
+        cpu.push({ text: data.cpu_percent.toFixed(0) + '%', color: pctColor(data.cpu_percent) });
     if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
         let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
-        cpu.push('<span foreground="' + tempColor(vrm) + '">VRM ' +
-                 vrm.toFixed(0) + '\u00b0</span>');
+        cpu.push({ text: 'VRM ' + vrm.toFixed(0) + '\u00b0', color: tempColor(vrm) });
     }
     let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
     if (ram) {
         let p = data.ram_total_gib ? 100 * data.ram_used_gib / data.ram_total_gib : 0;
-        cpu.push('<span foreground="' + pctColor(p) + '">RAM ' + ram + '</span>');
+        cpu.push({ text: 'RAM ' + ram, color: pctColor(p) });
     }
 
     // GPU group: temp, busy %, VRAM
-    if (pick.GPU !== undefined) {
-        let s = '<span foreground="' + tempColor(pick.GPU) + '">GPU ' +
-                pick.GPU.toFixed(0) + '\u00b0</span>';
-        if (typeof data.gpu_percent === 'number')
-            s += ' <span foreground="' + pctColor(data.gpu_percent) + '">' +
-                 data.gpu_percent.toFixed(0) + '%</span>';
-        gpu.push(s);
-    }
+    if (pick.GPU !== undefined)
+        gpu.push({ text: 'GPU ' + pick.GPU.toFixed(0) + '\u00b0', color: tempColor(pick.GPU) });
+    if (typeof data.gpu_percent === 'number')
+        gpu.push({ text: data.gpu_percent.toFixed(0) + '%', color: pctColor(data.gpu_percent) });
     let vram = usedTotalGib(data.vram_used_gib, data.vram_total_gib);
     if (vram) {
         let p = data.vram_total_gib ? 100 * data.vram_used_gib / data.vram_total_gib : 0;
-        gpu.push('<span foreground="' + pctColor(p) + '">VRAM ' + vram + '</span>');
+        gpu.push({ text: 'VRAM ' + vram, color: pctColor(p) });
     }
 
     let groups = [];
-    if (cpu.length) groups.push(cpu.join(' '));
-    if (gpu.length) groups.push(gpu.join(' '));
-    if (!groups.length) return '<span foreground="#888">ai-rig</span>';
-    return groups.join('  <span foreground="#666">|</span>  ');
+    if (cpu.length) groups.push(cpu);
+    if (gpu.length) groups.push(gpu);
+    if (!groups.length) return [{ text: 'ai-rig', color: '#888888' }];
+
+    let segs = [];
+    for (let gi = 0; gi < groups.length; gi++) {
+        if (gi > 0) segs.push({ text: ' | ', color: '#666666' });
+        for (let seg of groups[gi]) segs.push({ text: seg.text + ' ', color: seg.color });
+    }
+    return segs;
 }
 
 // read the cache file the background poller writes; returns data or null
@@ -161,7 +161,7 @@ export default class AIRigTemps extends Extension {
     constructor(metadata) {
         super(metadata);
         this._indicator = null;
-        this._barLabel = null;
+        this._barBox = null;
         this._timerId = null;
         this._lastGoodTs = 0;
     }
@@ -183,12 +183,11 @@ export default class AIRigTemps extends Extension {
         this._indicator = new PanelMenu.Button(1.0, 'AI-Rig Temps');
         this._indicator.tooltip_text = 'ai-rig temperatures & fans';
 
-        this._barLabel = new St.Label({
-            text: '\u2026',
-            y_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
+        this._barBox = new St.BoxLayout({
+            orientation: St.Orientation.HORIZONTAL,
+            style: 'padding: 0 2px;',
         });
-        this._indicator.add_child(this._barLabel);
+        this._indicator.add_child(this._barBox);
 
         // first (leftmost) item in the right box => "widget | system icons"
         rightBox.insert_child_at_index(this._indicator.container, 0);
@@ -208,15 +207,22 @@ export default class AIRigTemps extends Extension {
             this._indicator.destroy();
             this._indicator = null;
         }
-        this._barLabel = null;
+        this._barBox = null;
     }
 
-    _setBarText(markup) {
-        if (!this._barLabel) return;
+    // Rebuild the bar from a list of {text,color} segments, each its own
+    // St.Label colored via CSS `style`.
+    _setBar(segs) {
+        if (!this._barBox) return;
         try {
-            this._barLabel.clutter_text.set_markup(markup);
+            this._barBox.destroy_all_children();
+            for (let seg of segs) {
+                let lbl = new St.Label({ text: seg.text });
+                lbl.style = 'color: ' + seg.color + ';';
+                this._barBox.add(lbl);
+            }
         } catch (e) {
-            log('ai-rigtemps _setBarText failed: ' + e.message);
+            log('ai-rigtemps _setBar failed: ' + e.message);
         }
     }
 
@@ -226,12 +232,12 @@ export default class AIRigTemps extends Extension {
         let fresh = data && (now - (data.ts * 1000)) < STALE_MS;
 
         if (!fresh) {
-            this._setBarText('<span foreground="#e74c3c"><b>ai-rig OFFLINE</b></span>');
+            this._setBar([{ text: 'ai-rig OFFLINE', color: '#e74c3c' }]);
             return;
         }
 
         this._lastGoodTs = now;
-        this._setBarText(compactMarkup(data));
+        this._setBar(barSegments(data));
         try {
             if (this._indicator && this._indicator.menu)
                 rebuildMenu(this._indicator.menu, data);
