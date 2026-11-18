@@ -53,9 +53,15 @@ function compactMarkup(data) {
                  data.cpu_percent.toFixed(0) + '%</span>';
         parts.push(s);
     }
-    if (pick.GPU !== undefined)
-        parts.push('<span foreground="' + tempColor(pick.GPU) + '">GPU ' +
-                   pick.GPU.toFixed(0) + '\u00b0</span>');
+    // GPU temp + utilization (busy %) together
+    if (pick.GPU !== undefined) {
+        let s = '<span foreground="' + tempColor(pick.GPU) + '">GPU ' +
+                pick.GPU.toFixed(0) + '\u00b0</span>';
+        if (typeof data.gpu_percent === 'number')
+            s += ' <span foreground="' + pctColor(data.gpu_percent) + '">' +
+                 data.gpu_percent.toFixed(0) + '%</span>';
+        parts.push(s);
+    }
     if (pick.VRM_E !== undefined || pick.VRM_W !== undefined) {
         let vrm = Math.max(pick.VRM_E ?? 0, pick.VRM_W ?? 0);
         parts.push('<span foreground="' + tempColor(vrm) + '">VRM ' +
@@ -110,6 +116,9 @@ function rebuildMenu(menu, data) {
     if (typeof data.cpu_percent === 'number')
         usage.push('<span foreground="' + pctColor(data.cpu_percent) + '">' +
                    'CPU      ' + data.cpu_percent.toFixed(1) + '%</span>');
+    if (typeof data.gpu_percent === 'number')
+        usage.push('<span foreground="' + pctColor(data.gpu_percent) + '">' +
+                   'GPU      ' + data.gpu_percent.toFixed(1) + '%</span>');
     let ram = usedTotalGib(data.ram_used_gib, data.ram_total_gib);
     if (ram)
         usage.push('<span foreground="' +

@@ -72,6 +72,20 @@ def vram_gib():
         return None, None
 
 
+def gpu_percent():
+    """GPU utilization % (busy) via nvidia-smi."""
+    try:
+        out = run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu",
+             "--format=csv,noheader,nounits"]
+        ).strip()
+        if out and out != "[N/A]":
+            return int(out.split(",")[0].strip())
+    except Exception:
+        pass
+    return None
+
+
 def collect():
     temps = []
     fans = []
@@ -109,7 +123,7 @@ def collect():
             add_temp("GPU", float(parts[0]))
             try:
                 fans.append(
-                    {"label": "GPU", "value": int(parts[1]), "unit": "%"}
+                    {"label": "GPU fan", "value": int(parts[1]), "unit": "%"}
                 )
             except ValueError:
                 pass
@@ -119,16 +133,19 @@ def collect():
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         temps, fans = collect()
+        ram_used, ram_total = ram_gib()
+        vram_used, vram_total = vram_gib()
         body = json.dumps({
             "host": "ai-rig",
             "ts": time.time(),
             "temps": temps,
             "fans": fans,
             "cpu_percent": cpu_percent(),
-            "ram_used_gib": ram_gib()[0],
-            "ram_total_gib": ram_gib()[1],
-            "vram_used_gib": vram_gib()[0],
-            "vram_total_gib": vram_gib()[1],
+            "gpu_percent": gpu_percent(),
+            "ram_used_gib": ram_used,
+            "ram_total_gib": ram_total,
+            "vram_used_gib": vram_used,
+            "vram_total_gib": vram_total,
         }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
