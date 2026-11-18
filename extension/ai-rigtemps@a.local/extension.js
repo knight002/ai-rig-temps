@@ -184,7 +184,8 @@ export default class AIRigTemps extends Extension {
         this._indicator.tooltip_text = 'ai-rig temperatures & fans';
 
         this._barBox = new St.BoxLayout({
-            orientation: St.Orientation.HORIZONTAL,
+            // HORIZONTAL is the St.BoxLayout default; St.Orientation is
+            // unavailable in this GNOME build, so rely on the default.
             style: 'padding: 0 2px;',
         });
         this._indicator.add_child(this._barBox);
